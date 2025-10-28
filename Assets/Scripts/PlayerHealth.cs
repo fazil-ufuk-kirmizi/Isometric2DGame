@@ -7,23 +7,23 @@ public class PlayerHealth : MonoBehaviour
     [SerializeField] private int currentHP = 100;
 
     [Header("UI")]
-    [SerializeField] private Slider healthBar;           // red, instant
-    [SerializeField] private RectTransform damageFill;   // yellow, delayed (Simple/Sliced, pivot (0,0.5))
+    [SerializeField] private Slider healthBar;           // Red, instant HP bar (main)
+    [SerializeField] private RectTransform damageFill;   // Yellow, delayed HP bar (Simple/Sliced, pivot (0,0.5))
 
     [Header("Damage Bar Effect")]
-    [SerializeField, Min(0f)] private float holdDuration = 0.25f; // delay before yellow starts shrinking
-    [SerializeField, Min(1f)] private float shrinkSpeedHP = 20f;  // yellow shrink speed in HP per second
+    [SerializeField, Min(0f)] private float holdDuration = 0.25f; // Delay before the yellow bar starts shrinking
+    [SerializeField, Min(1f)] private float shrinkSpeedHP = 20f;  // Yellow bar shrink speed (HP per second)
 
-    private float delayedHP;   // what yellow currently shows (in HP)
-    private float baseWidth;   // full width of damageFill
-    private float holdTimer;   // countdown
+    private float delayedHP;   // Current HP value represented by the yellow bar
+    private float baseWidth;   // Full width of the yellow bar when HP is 100%
+    private float holdTimer;   // Timer to handle the shrink delay
 
     public int CurrentHP => currentHP;
     public int MaxHP => maxHP;
 
     private void Awake()
     {
-        // init red bar
+        // Initialize the red bar
         if (healthBar)
         {
             healthBar.minValue = 0;
@@ -31,10 +31,10 @@ public class PlayerHealth : MonoBehaviour
             healthBar.value = currentHP;
         }
 
-        // init yellow bar
+        // Initialize the yellow bar
         if (damageFill)
         {
-            // Sol kenara sabitle (Inspector’da da pivot X=0, anchors min=max=(0,0.5) olmalý)
+            // Ensure the bar is anchored and pivoted to the left side
             damageFill.pivot = new Vector2(0f, 0.5f);
             damageFill.anchoredPosition = new Vector2(0f, damageFill.anchoredPosition.y);
 
@@ -48,17 +48,16 @@ public class PlayerHealth : MonoBehaviour
     {
         if (!healthBar || !damageFill) return;
 
-        // Bekleme süresi boyunca sarý barý kýpýrdatma
+        // Wait before the yellow bar starts shrinking
         if (holdTimer > 0f)
         {
             holdTimer -= Time.deltaTime;
             return;
         }
 
-        // Hedef: kýrmýzý barýn (currentHP) gösterdiði deðer
         float targetHP = healthBar.value;
 
-        // Sarý bar sadece AZALIR (damage için). Heal durumunda TakeDamage/Heal içinde ele alýyoruz.
+        // The yellow bar only decreases (simulating damage delay)
         if (delayedHP > targetHP)
         {
             delayedHP = Mathf.MoveTowards(delayedHP, targetHP, shrinkSpeedHP * Time.deltaTime);
@@ -72,13 +71,11 @@ public class PlayerHealth : MonoBehaviour
 
         currentHP = Mathf.Max(0, currentHP - amount);
 
-        // Kýrmýzý bar hemen iner
+        // The red bar updates instantly
         if (healthBar) healthBar.value = currentHP;
 
-        // Gecikme baþlasýn; sarý bar bekleyip sonra akacak
+        // Start the delay before the yellow bar shrinks
         holdTimer = holdDuration;
-
-        // Sarý barý YUKARI çekmeyiz; sadece Update'te aþaðý doðru akar
     }
 
     public void Heal(int amount)
@@ -88,11 +85,10 @@ public class PlayerHealth : MonoBehaviour
         currentHP = Mathf.Min(maxHP, currentHP + amount);
         if (healthBar) healthBar.value = currentHP;
 
-        // Heal'da ikisi de ayný anda yukarý çýksýn
+        // On healing, both bars update instantly
         delayedHP = currentHP;
         SetDamageFillWidth(delayedHP / maxHP);
 
-        // heal sonrasý bekleme olmasýn
         holdTimer = 0f;
     }
 
@@ -119,7 +115,7 @@ public class PlayerHealth : MonoBehaviour
         size.x = baseWidth * ratio;
         damageFill.sizeDelta = size;
 
-        // solda sabit kalsýn
+        // Keep the yellow bar anchored to the left side
         damageFill.anchoredPosition = new Vector2(0f, damageFill.anchoredPosition.y);
     }
 
