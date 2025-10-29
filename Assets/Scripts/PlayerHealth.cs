@@ -76,6 +76,12 @@ public class PlayerHealth : MonoBehaviour
 
         // Start the delay before the yellow bar shrinks
         holdTimer = holdDuration;
+
+        if (currentHP == 0)
+        {
+            // Handle player death if needed
+            Debug.Log("Player died!");
+        }
     }
 
     public void Heal(int amount)
