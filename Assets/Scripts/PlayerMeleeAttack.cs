@@ -56,14 +56,16 @@ public class PlayerMeleeAttack : MonoBehaviour
         if (Time.time - lastAttackTime < cooldown) return;
         lastAttackTime = Time.time;
 
-        Vector2 origin = attackOrigin ? attackOrigin.position : transform.position;
+        Vector2 origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
         Camera cameraUsed = cam ? cam : Camera.main;
 
         Vector2 aimDir = Vector2.right;
         if (cameraUsed && Mouse.current != null)
         {
             Vector3 mouseWorld = cameraUsed.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+            mouseWorld.z = 0f;
             aimDir = ((Vector2)mouseWorld - origin).normalized;
+            if (aimDir.sqrMagnitude < 0.0001f) aimDir = Vector2.right;
         }
 
         Collider2D[] hits = Physics2D.OverlapCircleAll(origin, range, enemyMask);
@@ -76,7 +78,10 @@ public class PlayerMeleeAttack : MonoBehaviour
             if (angle > arc * 0.5f) continue;
 
             EnemyHealth enemy = hit.GetComponentInParent<EnemyHealth>();
-            if (enemy != null) enemy.TakeDamage(damage);
+            if (enemy != null)
+            {
+                enemy.TakeDamage(damage, origin);
+            }
         }
     }
 

@@ -36,6 +36,7 @@ public class EnemyAI : MonoBehaviour
 
     private Rigidbody2D rb;
     private PlayerHealth playerHealth;
+    private EnemyHealth enemyHealth;
 
     private State state;
     private Transform currentPatrolTarget;
@@ -45,6 +46,7 @@ public class EnemyAI : MonoBehaviour
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        enemyHealth = GetComponent<EnemyHealth>();
         if (!sr) sr = GetComponentInChildren<SpriteRenderer>();
     }
 
@@ -113,6 +115,12 @@ public class EnemyAI : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // Don't move if in knockback
+        if (enemyHealth != null && enemyHealth.IsInKnockback)
+        {
+            return;
+        }
+
         switch (state)
         {
             case State.Idle:
