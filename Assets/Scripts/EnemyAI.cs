@@ -174,6 +174,11 @@ public class EnemyAI : MonoBehaviour
             scale.x = Mathf.Abs(scale.x) * Mathf.Sign(rb.linearVelocity.x == 0 ? scale.x : rb.linearVelocity.x);
             transform.localScale = scale;
         }
+
+        if (state != State.Attack)
+        {
+            UpdateAnimator();
+        }
     }
 
     private void PatrolMove()
@@ -263,16 +268,18 @@ public class EnemyAI : MonoBehaviour
             }
         }
 
-        // Wait for rest of animation to complete
+        // Wait for animation to complete
         if (anim)
         {
-            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
-            float animLength = stateInfo.length;
-            float remainingTime = animLength - attackDamageDelay;
+            // Wait one frame to ensure animator has updated
+            yield return null;
 
-            if (remainingTime > 0)
+            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
+            // Wait for the animation to finish from current normalized time
+            while (stateInfo.normalizedTime < 1.0f)
             {
-                yield return new WaitForSeconds(remainingTime);
+                yield return null;
+                stateInfo = anim.GetCurrentAnimatorStateInfo(0);
             }
         }
     }
@@ -317,6 +324,13 @@ public class EnemyAI : MonoBehaviour
     private void UpdateAnimator()
     {
         if (!anim) return;
+
+        // Don't update animator parameters while attack animation is playing
+        AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
+        if (stateInfo.IsName("Attack"))
+        {
+            return;
+        }
 
         // Set isRunning to true when in Patrol or Chase state (when moving)
         // But NOT when in hit reaction or stunned
