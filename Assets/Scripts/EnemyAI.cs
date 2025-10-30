@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class EnemyAI : MonoBehaviour
@@ -25,6 +26,7 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Attack")]
     [SerializeField, Min(0.1f)] private float attackCooldown = 0.75f;
+    [SerializeField, Min(0f)] private float attackDamageDelay = 0.3f; // Delay before damage is applied
     [SerializeField, Min(1)] private int attackDamage = 10;
 
     [Header("Visual Feedback (Optional)")]
@@ -37,6 +39,7 @@ public class EnemyAI : MonoBehaviour
     private Rigidbody2D rb;
     private PlayerHealth playerHealth;
     private EnemyHealth enemyHealth;
+    private Animator anim;
 
     private State state;
     private Transform currentPatrolTarget;
@@ -47,6 +50,7 @@ public class EnemyAI : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         enemyHealth = GetComponent<EnemyHealth>();
+        anim = GetComponent<Animator>();
         if (!sr) sr = GetComponentInChildren<SpriteRenderer>();
     }
 
@@ -64,6 +68,7 @@ public class EnemyAI : MonoBehaviour
 
         state = startIdle ? State.Idle : State.Patrol;
         ApplyStateVisual();
+        UpdateAnimator();
     }
 
     private void Update()
@@ -141,6 +146,9 @@ public class EnemyAI : MonoBehaviour
                 break;
         }
 
+        // Update animator based on movement
+        UpdateAnimator();
+
         // Flip sprite based on movement direction
         if (faceMovement && rb.linearVelocity.sqrMagnitude > 0.0001f)
         {
@@ -184,23 +192,94 @@ public class EnemyAI : MonoBehaviour
 
     private void TryAttack()
     {
-        if (!player || Time.time - lastAttackTime < attackCooldown) return;
+        if (!player) return;
 
+        // Check if attack animation is currently playing
+        if (anim)
+        {
+            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
+            bool isAttacking = stateInfo.IsName("Attack");
+
+            // Don't start new attack if animation is playing
+            if (isAttacking)
+            {
+                return;
+            }
+        }
+
+        // Check cooldown separately
+        if (Time.time - lastAttackTime < attackCooldown)
+        {
+            return;
+        }
+
+        // Start attack coroutine
+        StartCoroutine(AttackSequence());
+    }
+
+    private IEnumerator AttackSequence()
+    {
         lastAttackTime = Time.time;
 
-        if (playerHealth)
+        // Trigger attack animation
+        if (anim)
         {
-            playerHealth.TakeDamage(attackDamage);
-            Debug.Log($"Enemy attacked. Player HP: {playerHealth.CurrentHP}/{playerHealth.MaxHP}");
-        }
-        else
-        {
-            Debug.Log("Enemy attacks (no PlayerHealth found).");
+            anim.SetTrigger("attack");
         }
 
         if (sr)
         {
             sr.color = attackColor;
+        }
+
+        // Wait for damage delay
+        yield return new WaitForSeconds(attackDamageDelay);
+
+        // Apply damage
+        if (player && Vector2.Distance(transform.position, player.position) <= attackRange)
+        {
+            if (playerHealth)
+            {
+                playerHealth.TakeDamage(attackDamage);
+                Debug.Log($"Enemy attacked. Player HP: {playerHealth.CurrentHP}/{playerHealth.MaxHP}");
+            }
+        }
+
+        // Wait for rest of animation to complete
+        if (anim)
+        {
+            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
+            float animLength = stateInfo.length;
+            float remainingTime = animLength - attackDamageDelay;
+
+            if (remainingTime > 0)
+            {
+                yield return new WaitForSeconds(remainingTime);
+            }
+        }
+    }
+
+    private IEnumerator ApplyDamageAfterDelay()
+    {
+        // Wait for the specified delay
+        yield return new WaitForSeconds(attackDamageDelay);
+
+        // Check if player still exists and is in range
+        if (player && Vector2.Distance(transform.position, player.position) <= attackRange)
+        {
+            if (playerHealth)
+            {
+                playerHealth.TakeDamage(attackDamage);
+                Debug.Log($"Enemy attacked. Player HP: {playerHealth.CurrentHP}/{playerHealth.MaxHP}");
+            }
+            else
+            {
+                Debug.Log("Enemy attacks (no PlayerHealth found).");
+            }
+        }
+        else
+        {
+            Debug.Log("Attack missed - player out of range.");
         }
     }
 
@@ -209,11 +288,21 @@ public class EnemyAI : MonoBehaviour
         if (state == newState) return;
         state = newState;
         ApplyStateVisual();
+        UpdateAnimator();
 
         if (state == State.Attack)
         {
             rb.linearVelocity = Vector2.zero;
         }
+    }
+
+    private void UpdateAnimator()
+    {
+        if (!anim) return;
+
+        // Set isRunning to true when in Patrol or Chase state (when moving)
+        bool isRunning = (state == State.Patrol || state == State.Chase);
+        anim.SetBool("isRunning", isRunning);
     }
 
     private void ApplyStateVisual()
