@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: NewItem 1
   m_EditorClassIdentifier: 
   itemName: denem2e
-  icon: {fileID: 1918172238001988860, guid: d7e9e495c1720f145a88b66550f59942, type: 3}
+  icon: {fileID: 21300000, guid: d659f7396cd57754eba78763cf986c51, type: 3}
   description: 123

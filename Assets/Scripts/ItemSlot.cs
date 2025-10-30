@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using TMPro;
 
 [RequireComponent(typeof(CanvasGroup))]
 [RequireComponent(typeof(LayoutElement))]
@@ -9,7 +10,7 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 {
     [Header("UI Refs")]
     [SerializeField] private Image itemIcon;
-    [SerializeField] private Text quantityText;
+    [SerializeField] private TextMeshProUGUI quantityText;
     [SerializeField] private string iconChildName = "Icon";
 
     [HideInInspector] public Item item;
@@ -22,9 +23,18 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     private Image slotBackground;
     private CanvasRenderer iconRenderer;
 
-    private Vector2 dragOffset;
-    private Vector3 originalLocalPos;
+    // Drag visual
+    private GameObject dragVisual;
+    private Image dragIcon;
+    private RectTransform dragRT;
+
     private bool isDragging = false;
+
+
+    private void Start()
+    {
+        RefreshUI();
+    }
 
     private void Awake()
     {
@@ -89,7 +99,7 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (!quantityText)
         {
-            quantityText = GetComponentInChildren<Text>();
+            quantityText = GetComponentInChildren<TextMeshProUGUI>();
         }
 
         if (item == null && quantityText)
@@ -139,15 +149,21 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             return;
         }
 
-        ForceEnableIcon();
-
         if (item == null)
         {
             itemIcon.sprite = null;
             itemIcon.color = new Color(1f, 1f, 1f, 0f);
+
+            if (iconRenderer != null)
+            {
+                iconRenderer.SetAlpha(0f);
+            }
+
             if (quantityText) quantityText.text = "";
             return;
         }
+
+        ForceEnableIcon();
 
         itemIcon.color = Color.white;
         itemIcon.preserveAspect = true;
@@ -187,6 +203,11 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             itemIcon.sprite = null;
             itemIcon.color = new Color(1f, 1f, 1f, 0f);
+
+            if (iconRenderer != null)
+            {
+                iconRenderer.SetAlpha(0f);
+            }
         }
 
         if (quantityText) quantityText.text = "";
@@ -213,36 +234,63 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         Debug.Log($"[{name}] OnBeginDrag - Item: {item.itemName} (Q:{item.quantity})");
 
-        originalParent = transform.parent;
-        originalLocalPos = rt.localPosition;
+        // Create drag visual (only the icon)
+        CreateDragVisual();
 
-        layoutElement.ignoreLayout = true;
-        transform.SetParent(rootCanvas.transform, true);
-        transform.SetAsLastSibling();
+        // Make original icon semi-transparent to show it's being dragged
+        if (itemIcon)
+        {
+            var col = itemIcon.color;
+            col.a = 0.3f;
+            itemIcon.color = col;
+        }
 
-        canvasGroup.alpha = 0.6f;
+        // Slot stays in place, only visual follows cursor
         canvasGroup.blocksRaycasts = false;
+    }
 
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            (RectTransform)rootCanvas.transform,
-            eventData.position,
-            rootCanvas.worldCamera,
-            out Vector2 lp);
+    private void CreateDragVisual()
+    {
+        if (!itemIcon || item == null) return;
 
-        dragOffset = (Vector2)rt.anchoredPosition - lp;
+        // Create a temporary GameObject for the drag visual
+        dragVisual = new GameObject("DragIcon");
+        dragVisual.transform.SetParent(rootCanvas.transform, false);
+        dragVisual.transform.SetAsLastSibling();
+
+        dragRT = dragVisual.AddComponent<RectTransform>();
+        dragIcon = dragVisual.AddComponent<Image>();
+
+        // Copy icon properties
+        dragIcon.sprite = itemIcon.sprite;
+        dragIcon.raycastTarget = false;
+        dragIcon.preserveAspect = true;
+
+        // Set size to match original icon
+        dragRT.sizeDelta = itemIcon.rectTransform.sizeDelta;
+
+        // Semi-transparent
+        var col = dragIcon.color;
+        col.a = 0.6f;
+        dragIcon.color = col;
+
+        // Add CanvasGroup for better control
+        var cg = dragVisual.AddComponent<CanvasGroup>();
+        cg.blocksRaycasts = false;
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (!isDragging || item == null || rootCanvas == null) return;
+        if (!isDragging || item == null || rootCanvas == null || !dragRT) return;
 
+        // Move only the drag visual
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
             (RectTransform)rootCanvas.transform,
             eventData.position,
             rootCanvas.worldCamera,
-            out Vector2 lp))
+            out Vector2 localPoint))
         {
-            rt.anchoredPosition = lp + dragOffset;
+            dragRT.anchoredPosition = localPoint;
         }
     }
 
@@ -250,17 +298,31 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         if (!isDragging) return;
 
-        if (rootCanvas == null) return;
-
         Debug.Log($"[{name}] OnEndDrag - Item: {(item != null ? item.itemName : "NULL")}");
 
-        transform.SetParent(originalParent, true);
-        rt.localPosition = originalLocalPos;
+        // Destroy drag visual
+        if (dragVisual != null)
+        {
+            Destroy(dragVisual);
+            dragVisual = null;
+            dragRT = null;
+            dragIcon = null;
+        }
 
-        layoutElement.ignoreLayout = false;
-        canvasGroup.alpha = 1f;
+        // Restore original icon - only if item still exists
+        if (itemIcon && item != null)
+        {
+            var col = itemIcon.color;
+            col.a = 1f;
+            itemIcon.color = col;
+
+            if (iconRenderer != null)
+            {
+                iconRenderer.SetAlpha(1f);
+            }
+        }
+
         canvasGroup.blocksRaycasts = true;
-
         isDragging = false;
     }
 

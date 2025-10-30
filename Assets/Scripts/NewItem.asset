@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: NewItem
   m_EditorClassIdentifier: 
   itemName: deneme
-  icon: {fileID: -9041710832950134314, guid: 7a0d0a5ab5828fd47b08147d804b7858, type: 3}
+  icon: {fileID: 21300000, guid: 719c2201c2f5f6c4aafffaeb5abdf5f9, type: 3}
   description: 123

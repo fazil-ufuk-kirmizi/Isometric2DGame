@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: NewItem 2
   m_EditorClassIdentifier: 
   itemName: d1eneme
-  icon: {fileID: -8385691724674870508, guid: 974840c333abb8248a30f7a90e8fd0e5, type: 3}
+  icon: {fileID: 21300000, guid: 108ca3e7dda90d945b0914bf9259ec94, type: 3}
   description: 123
