@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 public class PlayerMeleeAttack : MonoBehaviour
 {
@@ -12,6 +13,9 @@ public class PlayerMeleeAttack : MonoBehaviour
     [SerializeField] private int damage = 20;
     [SerializeField] private float cooldown = 0.35f;
     [SerializeField] private LayerMask enemyMask;
+
+    [Header("Attack Timing")]
+    [SerializeField] private float damageDelay = 0.2f; // Delay before damage is applied (during attack animation)
 
     [Header("References")]
     [SerializeField] private Camera cam;
@@ -82,6 +86,13 @@ public class PlayerMeleeAttack : MonoBehaviour
         if (anim)
             anim.SetTrigger("Attack");
 
+        // Start coroutine to apply damage after delay
+        StartCoroutine(ApplyDamageAfterDelay());
+    }
+
+    private IEnumerator ApplyDamageAfterDelay()
+    {
+        // Store attack parameters at the moment of attack
         Vector2 origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
         Camera cameraUsed = cam ? cam : Camera.main;
         Vector2 aimDir = Vector2.right;
@@ -93,6 +104,13 @@ public class PlayerMeleeAttack : MonoBehaviour
             aimDir = ((Vector2)mouseWorld - origin).normalized;
             if (aimDir.sqrMagnitude < 0.0001f) aimDir = Vector2.right;
         }
+
+        // Wait for the damage delay
+        yield return new WaitForSeconds(damageDelay);
+
+        // Now apply damage
+        // Update origin in case player moved during animation
+        origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
 
         Collider2D[] hits = Physics2D.OverlapCircleAll(origin, range, enemyMask);
 

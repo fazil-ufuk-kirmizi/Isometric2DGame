@@ -120,9 +120,27 @@ public class EnemyAI : MonoBehaviour
 
     private void FixedUpdate()
     {
-        // Don't move if in knockback
-        if (enemyHealth != null && enemyHealth.IsInKnockback)
+        // Don't move if in hit reaction (knockback + animation playing simultaneously)
+        if (enemyHealth != null && enemyHealth.IsInHitReaction)
         {
+            // During knockback, let the physics play out
+            if (enemyHealth.IsInKnockback)
+            {
+                // Don't interfere with knockback velocity
+                return;
+            }
+            // If animation is still playing but knockback ended, stop movement
+            else
+            {
+                rb.linearVelocity = Vector2.zero;
+                return;
+            }
+        }
+
+        // Don't move if stunned (after hit reaction ends)
+        if (enemyHealth != null && enemyHealth.IsStunned)
+        {
+            rb.linearVelocity = Vector2.zero;
             return;
         }
 
@@ -301,7 +319,15 @@ public class EnemyAI : MonoBehaviour
         if (!anim) return;
 
         // Set isRunning to true when in Patrol or Chase state (when moving)
+        // But NOT when in hit reaction or stunned
         bool isRunning = (state == State.Patrol || state == State.Chase);
+
+        // Disable running animation during hit reaction or stun
+        if (enemyHealth != null && (enemyHealth.IsInHitReaction || enemyHealth.IsStunned))
+        {
+            isRunning = false;
+        }
+
         anim.SetBool("isRunning", isRunning);
     }
 
