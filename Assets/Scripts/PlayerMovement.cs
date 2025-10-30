@@ -20,9 +20,11 @@ public class PlayerMovement : MonoBehaviour
     private Rigidbody2D rb;
     private Vector2 moveInput;
     private Vector2 targetVelocity;
+    private Animator anim;
 
     private void Awake()
     {
+        anim = GetComponent<Animator>();
         rb = GetComponent<Rigidbody2D>();
         rb.gravityScale = 0f;
         rb.interpolation = RigidbodyInterpolation2D.Interpolate;
@@ -55,6 +57,13 @@ public class PlayerMovement : MonoBehaviour
         // Minimal visual feedback
         if (spriteRenderer && Mathf.Abs(moveInput.x) > 0.01f)
             spriteRenderer.flipX = moveInput.x < 0f;
+
+        bool isMoving = moveInput.sqrMagnitude > 0.01f;
+        if (anim)
+        {
+            anim.SetBool("isRunning", isMoving);
+        }
+
     }
 
     private void FixedUpdate()

@@ -18,6 +18,7 @@ public class PlayerMeleeAttack : MonoBehaviour
     [SerializeField] private Transform attackOrigin;
 
     private float lastAttackTime;
+    private Animator anim;
 
     private void OnEnable()
     {
@@ -26,6 +27,9 @@ public class PlayerMeleeAttack : MonoBehaviour
             attackAction.action.performed += OnAttack;
             attackAction.action.Enable();
         }
+
+        if (!anim)
+            anim = GetComponent<Animator>();
     }
 
     private void OnDisable()
@@ -53,13 +57,19 @@ public class PlayerMeleeAttack : MonoBehaviour
 
     private void TryAttack()
     {
+        // Check cooldown FIRST, before triggering animation
         if (Time.time - lastAttackTime < cooldown) return;
+
         lastAttackTime = Time.time;
+
+        // Only trigger animation if attack is allowed
+        if (anim)
+            anim.SetTrigger("Attack");
 
         Vector2 origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
         Camera cameraUsed = cam ? cam : Camera.main;
-
         Vector2 aimDir = Vector2.right;
+
         if (cameraUsed && Mouse.current != null)
         {
             Vector3 mouseWorld = cameraUsed.ScreenToWorldPoint(Mouse.current.position.ReadValue());
@@ -73,8 +83,10 @@ public class PlayerMeleeAttack : MonoBehaviour
         foreach (var hit in hits)
         {
             if (!hit) continue;
+
             Vector2 toTarget = (Vector2)hit.bounds.center - origin;
             float angle = Vector2.Angle(aimDir, toTarget);
+
             if (angle > arc * 0.5f) continue;
 
             EnemyHealth enemy = hit.GetComponentInParent<EnemyHealth>();

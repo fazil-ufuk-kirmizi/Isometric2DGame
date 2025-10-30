@@ -14,15 +14,24 @@ public class PlayerHealth : MonoBehaviour
     [SerializeField, Min(0f)] private float holdDuration = 0.25f; // Delay before the yellow bar starts shrinking
     [SerializeField, Min(1f)] private float shrinkSpeedHP = 20f;  // Yellow bar shrink speed (HP per second)
 
+    [Header("Animation")]
+    [SerializeField] private string deathAnimationName = "Death"; // Name of the death animation state
+
     private float delayedHP;   // Current HP value represented by the yellow bar
     private float baseWidth;   // Full width of the yellow bar when HP is 100%
     private float holdTimer;   // Timer to handle the shrink delay
+    private Animator anim;     // Reference to the Animator component
+    private bool isDead = false; // Track if player is dead
 
     public int CurrentHP => currentHP;
     public int MaxHP => maxHP;
+    public bool IsDead => isDead;
 
     private void Awake()
     {
+        // Get the Animator component
+        anim = GetComponent<Animator>();
+
         // Initialize the red bar
         if (healthBar)
         {
@@ -67,26 +76,34 @@ public class PlayerHealth : MonoBehaviour
 
     public void TakeDamage(int amount)
     {
-        if (amount <= 0) return;
+        if (amount <= 0 || isDead) return;
 
         currentHP = Mathf.Max(0, currentHP - amount);
 
         // The red bar updates instantly
         if (healthBar) healthBar.value = currentHP;
 
-        // Start the delay before the yellow bar shrinks
-        holdTimer = holdDuration;
-
         if (currentHP == 0)
         {
-            // Handle player death if needed
+            // Play death animation directly
+            isDead = true;
+            if (anim) anim.Play(deathAnimationName);
+
             Debug.Log("Player died!");
         }
+        else
+        {
+            // Trigger the hit animation only if not dead
+            if (anim) anim.SetTrigger("Hit");
+        }
+
+        // Start the delay before the yellow bar shrinks
+        holdTimer = holdDuration;
     }
 
     public void Heal(int amount)
     {
-        if (amount <= 0) return;
+        if (amount <= 0 || isDead) return;
 
         currentHP = Mathf.Min(maxHP, currentHP + amount);
         if (healthBar) healthBar.value = currentHP;
