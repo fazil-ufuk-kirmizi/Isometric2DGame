@@ -6,7 +6,7 @@ using TMPro;
 [RequireComponent(typeof(CanvasGroup))]
 [RequireComponent(typeof(LayoutElement))]
 [RequireComponent(typeof(Image))]
-public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IDropHandler
+public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IDropHandler, IPointerClickHandler
 {
     [Header("UI Refs")]
     [SerializeField] private Image itemIcon;
@@ -211,6 +211,21 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
 
         if (quantityText) quantityText.text = "";
+    }
+
+    // --- CLICK DETECTION ---
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        // Only show description on left click and if not dragging
+        if (eventData.button == PointerEventData.InputButton.Left && item != null && !isDragging)
+        {
+            // Find the InventoryManager and tell it to show this item's description
+            var inventoryManager = FindFirstObjectByType<InventoryManager>();
+            if (inventoryManager != null)
+            {
+                inventoryManager.ShowItemDescription(item);
+            }
+        }
     }
 
     // --- DRAG & DROP ---

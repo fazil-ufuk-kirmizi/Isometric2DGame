@@ -6,4 +6,5 @@ public class Item
     public string itemName;
     public Sprite icon;
     public int quantity = 1;
+    public string description;
 }

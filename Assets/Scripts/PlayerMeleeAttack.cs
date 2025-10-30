@@ -16,6 +16,7 @@ public class PlayerMeleeAttack : MonoBehaviour
     [Header("References")]
     [SerializeField] private Camera cam;
     [SerializeField] private Transform attackOrigin;
+    [SerializeField] private InventoryManager inventoryManager;
 
     private float lastAttackTime;
     private Animator anim;
@@ -41,6 +42,15 @@ public class PlayerMeleeAttack : MonoBehaviour
         }
     }
 
+    private void Start()
+    {
+        // Auto-find InventoryManager if not assigned
+        if (!inventoryManager)
+        {
+            inventoryManager = FindFirstObjectByType<InventoryManager>();
+        }
+    }
+
     private void Update()
     {
         if ((!attackAction || attackAction.action == null) && Mouse.current != null)
@@ -57,6 +67,12 @@ public class PlayerMeleeAttack : MonoBehaviour
 
     private void TryAttack()
     {
+        // Don't attack if inventory is open
+        if (inventoryManager != null && inventoryManager.IsInventoryOpen)
+        {
+            return;
+        }
+
         // Check cooldown FIRST, before triggering animation
         if (Time.time - lastAttackTime < cooldown) return;
 
