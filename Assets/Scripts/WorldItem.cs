@@ -75,7 +75,8 @@ public class WorldItem : MonoBehaviour
                 itemName = itemData.itemName,
                 icon = itemData.icon,
                 quantity = quantity,
-                description = itemData.description
+                description = itemData.description,
+                itemData = itemData // Keep reference to the ScriptableObject
             };
 
             inventory.AddItem(newItem);

@@ -10,8 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 024dead3141191442acf05dbe0af86d7, type: 3}
-  m_Name: NewItem
+  m_Name: bow
   m_EditorClassIdentifier: 
-  itemName: deneme
-  icon: {fileID: 21300000, guid: 719c2201c2f5f6c4aafffaeb5abdf5f9, type: 3}
-  description: sadfsafcdsfvcsd
+  itemName: Bow
+  icon: {fileID: 21300000, guid: 8f908a0041a1aee4c8b02d9449ebd224, type: 3}
+  description: "A bow that can hit distant enemies. Too bad you don\u2019t know how
+    to use it."
+  itemType: 2
+  healAmount: 0
+  consumeOnUse: 0

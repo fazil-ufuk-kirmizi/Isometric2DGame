@@ -18,6 +18,9 @@ public class InventoryManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI itemNameText; // Text for item name
     [SerializeField] private TextMeshProUGUI descriptionText; // Text for item description
 
+    [Header("Player Reference")]
+    [SerializeField] private PlayerHealth playerHealth; // Reference to player's health component
+
     [Header("Test Item Prefabs")]
     [SerializeField] private List<ItemDataSO> testItemPrefabs = new();
 
@@ -50,6 +53,16 @@ public class InventoryManager : MonoBehaviour
         else
         {
             Debug.LogWarning("Close Button not assigned! Assign it in the Inspector.");
+        }
+
+        // Auto-find PlayerHealth if not assigned
+        if (!playerHealth)
+        {
+            var player = GameObject.FindGameObjectWithTag("Player");
+            if (player)
+            {
+                playerHealth = player.GetComponent<PlayerHealth>();
+            }
         }
 
         CreateSlots();
@@ -164,6 +177,64 @@ public class InventoryManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Use/consume an item from the inventory
+    /// </summary>
+    public void UseItem(ItemSlot slot)
+    {
+        if (slot == null || slot.item == null) return;
+
+        Item item = slot.item;
+        ItemDataSO itemData = item.itemData;
+
+        if (itemData == null)
+        {
+            Debug.LogWarning($"Cannot use {item.itemName}: No ItemDataSO reference!");
+            return;
+        }
+
+        // Check if item is consumable
+        if (itemData.itemType != ItemType.Consumable)
+        {
+            Debug.Log($"{item.itemName} cannot be used.");
+            return;
+        }
+
+        // Apply item effects
+        bool itemUsed = false;
+
+        // Healing effect
+        if (itemData.healAmount > 0 && playerHealth != null)
+        {
+            if (playerHealth.CurrentHP < playerHealth.MaxHP)
+            {
+                playerHealth.Heal(itemData.healAmount);
+                Debug.Log($"Used {item.itemName}. Healed {itemData.healAmount} HP!");
+                itemUsed = true;
+            }
+            else
+            {
+                Debug.Log($"Cannot use {item.itemName}: Already at full health!");
+                return; // Don't consume if at full health
+            }
+        }
+
+        // If item was used successfully and should be consumed
+        if (itemUsed && itemData.consumeOnUse)
+        {
+            item.quantity--;
+
+            if (item.quantity <= 0)
+            {
+                slot.ClearSlot();
+            }
+            else
+            {
+                slot.RefreshUI();
+            }
+        }
+    }
+
     public void AddItem(Item item)
     {
         if (slots.Count == 0)
@@ -172,15 +243,18 @@ public class InventoryManager : MonoBehaviour
             return;
         }
 
-        // 1) If stackable, first search for same name (simple stacking for example purposes)
-        foreach (var s in slots)
+        // 1) If stackable, first search for same ItemDataSO reference
+        if (item.itemData != null)
         {
-            if (s.item != null && s.item.itemName == item.itemName && s.item.icon == item.icon)
+            foreach (var s in slots)
             {
-                s.item.quantity += item.quantity;
-                s.RefreshUI();
-                Debug.Log($"{item.itemName} stacked. New quantity: {s.item.quantity}");
-                return;
+                if (s.item != null && s.item.itemData == item.itemData)
+                {
+                    s.item.quantity += item.quantity;
+                    s.RefreshUI();
+                    Debug.Log($"{item.itemName} stacked. New quantity: {s.item.quantity}");
+                    return;
+                }
             }
         }
 
@@ -194,7 +268,8 @@ public class InventoryManager : MonoBehaviour
                     itemName = item.itemName,
                     icon = item.icon,
                     quantity = Mathf.Max(1, item.quantity),
-                    description = item.description
+                    description = item.description,
+                    itemData = item.itemData
                 });
                 Debug.Log($"{item.itemName} added!");
                 return;
@@ -232,7 +307,8 @@ public class InventoryManager : MonoBehaviour
             itemName = itemData.itemName,
             icon = itemData.icon,
             quantity = 1,
-            description = itemData.description
+            description = itemData.description,
+            itemData = itemData
         };
 
         Debug.Log($"Creating item: {newItem.itemName}, Icon: {newItem.icon.name}");

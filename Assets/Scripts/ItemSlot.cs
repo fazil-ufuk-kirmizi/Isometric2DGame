@@ -216,15 +216,20 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     // --- CLICK DETECTION ---
     public void OnPointerClick(PointerEventData eventData)
     {
-        // Only show description on left click and if not dragging
-        if (eventData.button == PointerEventData.InputButton.Left && item != null && !isDragging)
+        if (item == null || isDragging) return;
+
+        var inventoryManager = FindFirstObjectByType<InventoryManager>();
+        if (inventoryManager == null) return;
+
+        // Left click: Show description
+        if (eventData.button == PointerEventData.InputButton.Left)
         {
-            // Find the InventoryManager and tell it to show this item's description
-            var inventoryManager = FindFirstObjectByType<InventoryManager>();
-            if (inventoryManager != null)
-            {
-                inventoryManager.ShowItemDescription(item);
-            }
+            inventoryManager.ShowItemDescription(item);
+        }
+        // Right click: Use item
+        else if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            inventoryManager.UseItem(this);
         }
     }
 
@@ -377,10 +382,10 @@ public class ItemSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             return;
         }
 
-        // If same item type, stack them
+        // If same item type (using ItemDataSO reference), stack them
         if (thisItem != null && draggedItem != null &&
-            thisItem.itemName == draggedItem.itemName &&
-            thisItem.icon == draggedItem.icon)
+            thisItem.itemData != null && draggedItem.itemData != null &&
+            thisItem.itemData == draggedItem.itemData)
         {
             Debug.Log($"[{name}] Item stacking: {thisItem.itemName} ({thisItem.quantity} + {draggedItem.quantity})");
 
