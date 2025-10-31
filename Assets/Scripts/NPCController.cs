@@ -1,11 +1,15 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 
 public class NPCController : MonoBehaviour
 {
+    private enum DialogueMode { None, Normal, Quest }
+
     [Header("Dialogue")]
     [SerializeField] private string npcName = "NPC";
     [SerializeField, TextArea(3, 5)]
@@ -20,52 +24,67 @@ public class NPCController : MonoBehaviour
 
     [Header("Interaction")]
     [SerializeField, Min(0f)] private float interactionRange = 2.84f;
-    [SerializeField] private InputActionReference interactAction; // Must be assigned in Inspector
+    [SerializeField] private InputActionReference interactAction; // assign in Inspector
     [SerializeField] private GameObject interactPrompt;
 
-    [Header("UI")]
+    [Header("Dialogue UI")]
     [SerializeField] private GameObject dialoguePanel;
     [SerializeField] private TextMeshProUGUI nameText;
     [SerializeField] private TextMeshProUGUI dialogueText;
     [SerializeField, Min(0f)] private float textSpeed = 0.05f;
 
+    [Header("Choice UI")]
+    [SerializeField] private GameObject choicePanel; // panel with 3 buttons
+    [SerializeField] private Button questButton;
+    [SerializeField] private Button talkButton;
+    [SerializeField] private Button leaveButton;
+
     [Header("Visual")]
     [SerializeField] private bool facePlayer = true;
     [SerializeField] private SpriteRenderer spriteRenderer;
+
+    [Header("Safety Windows")]
+    [SerializeField, Min(0f)] private float inputWarmupDuration = 0.25f; // ignore inputs just after enable
+    [SerializeField, Min(0f)] private float enterRangeCooldown = 0.15f;  // ignore inputs right after entering range
+    [SerializeField, Min(0f)] private float choiceBlockDuration = 0.2f;  // ignore clicks just after opening menu
 
     // Runtime state
     private GameObject player;
     private PlayerMovement playerMovement;
     private bool playerInRange;
     private bool isDialogueActive;
+    private bool inChoiceMenu;
     private int currentDialogueIndex;
     private Coroutine typingCoroutine;
     private bool inputGuard;
+
+    // Timers
+    private float canAcceptInputAt = 0f;  // global warmup + enter-range gate
+    private float choiceBlockUntil = -1f; // choice menu click gate
 
     // Input
     private InputAction anyKeyAction;
 
     private void Start()
     {
-        // Locate player and optional movement script
         player = GameObject.FindGameObjectWithTag("Player");
         if (player) playerMovement = player.GetComponent<PlayerMovement>();
-
-        // Optional sprite renderer fallback
         if (!spriteRenderer) spriteRenderer = GetComponent<SpriteRenderer>();
 
-        // Initial UI state
         if (dialoguePanel) dialoguePanel.SetActive(false);
+        if (choicePanel) choicePanel.SetActive(false);
         if (interactPrompt) interactPrompt.SetActive(false);
+
+        // Global warmup from start
+        canAcceptInputAt = Time.unscaledTime + inputWarmupDuration;
     }
 
     private void OnEnable()
     {
-        // Subscribe & enable Interact action
         if (interactAction != null && interactAction.action != null)
         {
-            interactAction.action.started += OnInteractStarted;   // More responsive on some devices
-            interactAction.action.performed += OnInteractPressed; // Standard path
+            interactAction.action.started += OnInteractStarted;
+            interactAction.action.performed += OnInteractPressed;
             interactAction.action.Enable();
         }
         else
@@ -73,12 +92,20 @@ public class NPCController : MonoBehaviour
             Debug.LogError("Interact ActionReference is not assigned or action is null.");
         }
 
-        // Create "any key" action (enabled only while dialogue is open)
         anyKeyAction = new InputAction("AnyKey", InputActionType.Button);
         anyKeyAction.AddBinding("<Keyboard>/anyKey");
-        anyKeyAction.AddBinding("*/<Button>"); // Gamepad/Mouse buttons
+        anyKeyAction.AddBinding("*/<Button>");
         anyKeyAction.started += OnAnyKeyPressed;
-        // Do NOT enable here; it will be enabled when dialogue starts
+        // Not enabled here; enabled when lines begin
+
+        if (questButton) questButton.onClick.AddListener(OnQuestSelected);
+        if (talkButton) talkButton.onClick.AddListener(OnTalkSelected);
+        if (leaveButton) leaveButton.onClick.AddListener(OnLeaveSelected);
+
+        DisableButtonNavigation(questButton);
+        DisableButtonNavigation(talkButton);
+        DisableButtonNavigation(leaveButton);
+        EventSystem.current?.SetSelectedGameObject(null);
     }
 
     private void OnDisable()
@@ -97,85 +124,50 @@ public class NPCController : MonoBehaviour
             anyKeyAction.Dispose();
             anyKeyAction = null;
         }
+
+        if (questButton) questButton.onClick.RemoveListener(OnQuestSelected);
+        if (talkButton) talkButton.onClick.RemoveListener(OnTalkSelected);
+        if (leaveButton) leaveButton.onClick.RemoveListener(OnLeaveSelected);
     }
 
     private void Update()
     {
         if (!player) return;
 
-        // Range check
         float distance = Vector2.Distance(transform.position, player.transform.position);
         bool wasInRange = playerInRange;
         playerInRange = distance <= interactionRange;
 
         if (playerInRange != wasInRange)
         {
-            if (playerInRange) OnPlayerEnterRange();
-            else OnPlayerExitRange();
+            if (playerInRange)
+            {
+                OnPlayerEnterRange();
+                // Gate inputs briefly after entering range
+                canAcceptInputAt = Mathf.Max(canAcceptInputAt, Time.unscaledTime + enterRangeCooldown);
+            }
+            else
+            {
+                OnPlayerExitRange();
+            }
         }
 
-        // Face player while idle
         if (playerInRange && facePlayer && spriteRenderer && !isDialogueActive)
             FacePlayer();
 
-        // Fallback: start dialogue if event missed but key was pressed this frame
-        if (!inputGuard &&
-            playerInRange &&
-            !isDialogueActive &&
-            interactAction != null &&
-            interactAction.action != null &&
-            interactAction.action.WasPressedThisFrame())
-        {
-            StartDialogue();
-            inputGuard = true; // Prevent same-frame continue
-        }
-
-        // Clear guard at end of frame
+        // No WasPressedThisFrame fallback here (prevents accidental auto-open)
         if (inputGuard) inputGuard = false;
     }
 
-    private void OnPlayerEnterRange()
+    private bool CanProcessInteract()
     {
-        if (!isDialogueActive && interactPrompt) interactPrompt.SetActive(true);
+        // Global warmup, enter-range cooldown, menu state
+        if (Time.unscaledTime < canAcceptInputAt) return false;
+        if (inChoiceMenu) return false;
+        return true;
     }
 
-    private void OnPlayerExitRange()
-    {
-        if (interactPrompt) interactPrompt.SetActive(false);
-        if (isDialogueActive) EndDialogue();
-    }
-
-    private void OnInteractStarted(InputAction.CallbackContext ctx)
-    {
-        // Some devices send started earlier than performed
-        if (!isDialogueActive && playerInRange)
-        {
-            StartDialogue();
-            inputGuard = true;
-        }
-    }
-
-    private void OnInteractPressed(InputAction.CallbackContext ctx)
-    {
-        if (inputGuard) return;
-
-        if (playerInRange && !isDialogueActive)
-        {
-            StartDialogue();
-            inputGuard = true;
-        }
-        else if (isDialogueActive)
-        {
-            ContinueDialogue();
-        }
-    }
-
-    private void OnAnyKeyPressed(InputAction.CallbackContext ctx)
-    {
-        if (inputGuard) return;
-        if (isDialogueActive) ContinueDialogue();
-    }
-
+    // Open choice menu only (no dialogue panel yet)
     private void StartDialogue()
     {
         if (dialogueLines == null || dialogueLines.Count == 0)
@@ -184,35 +176,67 @@ public class NPCController : MonoBehaviour
             return;
         }
 
+        if (playerMovement)
+        {
+            playerMovement.SetPaused(true);
+        }
+
         isDialogueActive = true;
+        inChoiceMenu = true;
 
-        // Disable player movement while talking
         if (playerMovement) playerMovement.enabled = false;
-
-        // Hide prompt
         if (interactPrompt) interactPrompt.SetActive(false);
 
-        // Show panel and set name
-        if (dialoguePanel) dialoguePanel.SetActive(true);
-        if (nameText) nameText.text = npcName;
+        // Only show choice panel, NOT dialogue panel
+        if (dialoguePanel) dialoguePanel.SetActive(false);
+        if (choicePanel) choicePanel.SetActive(true);
 
-        // Pick first (or random) line
-        currentDialogueIndex = randomizeDialogue ? Random.Range(0, dialogueLines.Count) : 0;
+        // Block same-frame submits
+        choiceBlockUntil = Time.unscaledTime + choiceBlockDuration;
 
-        ShowCurrentLine();
+        // Any-key disabled while choosing
+        if (anyKeyAction != null && anyKeyAction.enabled) anyKeyAction.Disable();
 
-        // Enable "any key" only during dialogue
-        if (anyKeyAction != null && !anyKeyAction.enabled) anyKeyAction.Enable();
+        EventSystem.current?.SetSelectedGameObject(null);
 
-        // Release guard next frame to avoid double-advance
         StartCoroutine(ReleaseGuardNextFrame());
     }
 
-    private IEnumerator ReleaseGuardNextFrame()
+    private void BeginLines()
     {
-        yield return null;
-        inputGuard = false;
+        inChoiceMenu = false;
+        if (choicePanel) choicePanel.SetActive(false);
+
+        // NOW activate the dialogue panel for actual dialogue
+        if (dialoguePanel) dialoguePanel.SetActive(true);
+        if (nameText) nameText.text = npcName;
+
+        currentDialogueIndex = randomizeDialogue ? Random.Range(0, dialogueLines.Count) : 0;
+        ShowCurrentLine();
+
+        if (anyKeyAction != null && !anyKeyAction.enabled) anyKeyAction.Enable();
+
     }
+
+    private void OnQuestSelected()
+    {
+        if (ChoiceClicksBlocked()) return;
+        BeginLines();
+    }
+
+    private void OnTalkSelected()
+    {
+        if (ChoiceClicksBlocked()) return;
+        BeginLines();
+    }
+
+    private void OnLeaveSelected()
+    {
+        if (ChoiceClicksBlocked()) return;
+        EndDialogue();
+    }
+
+    private bool ChoiceClicksBlocked() => Time.unscaledTime < choiceBlockUntil;
 
     private void ShowCurrentLine()
     {
@@ -239,7 +263,6 @@ public class NPCController : MonoBehaviour
 
     private IEnumerator TypeText(string text)
     {
-        // Simple typewriter effect
         foreach (char c in text)
         {
             dialogueText.text += c;
@@ -250,7 +273,8 @@ public class NPCController : MonoBehaviour
 
     private void ContinueDialogue()
     {
-        // If typing, finish instantly
+        if (inChoiceMenu) return;
+
         if (typingCoroutine != null)
         {
             StopCoroutine(typingCoroutine);
@@ -259,7 +283,6 @@ public class NPCController : MonoBehaviour
             return;
         }
 
-        // Advance line or end
         currentDialogueIndex++;
         if (currentDialogueIndex < dialogueLines.Count && cycleThroughDialogue)
             ShowCurrentLine();
@@ -270,7 +293,10 @@ public class NPCController : MonoBehaviour
     private void EndDialogue()
     {
         isDialogueActive = false;
+        inChoiceMenu = false;
         currentDialogueIndex = 0;
+
+        if (playerMovement) playerMovement.SetPaused(false);
 
         if (typingCoroutine != null)
         {
@@ -278,23 +304,81 @@ public class NPCController : MonoBehaviour
             typingCoroutine = null;
         }
 
-        // Re-enable movement
         if (playerMovement) playerMovement.enabled = true;
 
-        // Hide panel
         if (dialoguePanel) dialoguePanel.SetActive(false);
+        if (choicePanel) choicePanel.SetActive(false);
 
-        // Disable "any key"
         if (anyKeyAction != null && anyKeyAction.enabled) anyKeyAction.Disable();
 
-        // Restore prompt if still in range
         if (playerInRange && interactPrompt) interactPrompt.SetActive(true);
+    }
+
+    // Input callbacks
+    private void OnInteractStarted(InputAction.CallbackContext ctx)
+    {
+        if (!playerInRange || isDialogueActive) return;
+        if (!CanProcessInteract()) return;
+
+        StartDialogue();
+        inputGuard = true;
+    }
+
+    private void OnInteractPressed(InputAction.CallbackContext ctx)
+    {
+        if (inputGuard) return;
+
+        if (!isDialogueActive)
+        {
+            if (!playerInRange) return;
+            if (!CanProcessInteract()) return;
+
+            StartDialogue();
+            inputGuard = true;
+        }
+        else
+        {
+            if (inChoiceMenu) return;
+            ContinueDialogue();
+        }
+    }
+
+    private void OnAnyKeyPressed(InputAction.CallbackContext ctx)
+    {
+        if (inputGuard) return;
+        if (isDialogueActive && !inChoiceMenu) ContinueDialogue();
+    }
+
+    private IEnumerator ReleaseGuardNextFrame()
+    {
+        yield return null;
+        inputGuard = false;
+    }
+
+    // Range/UI helpers
+    private void OnPlayerEnterRange()
+    {
+        if (!isDialogueActive && interactPrompt) interactPrompt.SetActive(true);
+    }
+
+    private void OnPlayerExitRange()
+    {
+        if (interactPrompt) interactPrompt.SetActive(false);
+        if (isDialogueActive) EndDialogue();
     }
 
     private void FacePlayer()
     {
         if (!player || !spriteRenderer) return;
         spriteRenderer.flipX = player.transform.position.x < transform.position.x;
+    }
+
+    private void DisableButtonNavigation(Button b)
+    {
+        if (!b) return;
+        var nav = b.navigation;
+        nav.mode = Navigation.Mode.None;
+        b.navigation = nav;
     }
 
     private void OnDrawGizmosSelected()

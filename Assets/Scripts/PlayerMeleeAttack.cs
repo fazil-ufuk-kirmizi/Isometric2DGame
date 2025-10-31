@@ -15,12 +15,13 @@ public class PlayerMeleeAttack : MonoBehaviour
     [SerializeField] private LayerMask enemyMask;
 
     [Header("Attack Timing")]
-    [SerializeField] private float damageDelay = 0.2f; // Delay before damage is applied (during attack animation)
+    [SerializeField] private float damageDelay = 0.2f;
 
     [Header("References")]
     [SerializeField] private Camera cam;
     [SerializeField] private Transform attackOrigin;
     [SerializeField] private InventoryManager inventoryManager;
+    [SerializeField] private PlayerMovement playerMovement;
 
     private float lastAttackTime;
     private Animator anim;
@@ -33,8 +34,7 @@ public class PlayerMeleeAttack : MonoBehaviour
             attackAction.action.Enable();
         }
 
-        if (!anim)
-            anim = GetComponent<Animator>();
+        if (!anim) anim = GetComponent<Animator>();
     }
 
     private void OnDisable()
@@ -48,15 +48,21 @@ public class PlayerMeleeAttack : MonoBehaviour
 
     private void Start()
     {
-        // Auto-find InventoryManager if not assigned
         if (!inventoryManager)
-        {
             inventoryManager = FindFirstObjectByType<InventoryManager>();
-        }
+
+        if (!playerMovement)
+            playerMovement = GetComponent<PlayerMovement>();
+        if (!playerMovement)
+            playerMovement = FindFirstObjectByType<PlayerMovement>();
+
+        if (!cam)
+            cam = Camera.main;
     }
 
     private void Update()
     {
+        // Fare yedeði (Input System yoksa)
         if ((!attackAction || attackAction.action == null) && Mouse.current != null)
         {
             if (Mouse.current.leftButton.wasPressedThisFrame)
@@ -71,63 +77,54 @@ public class PlayerMeleeAttack : MonoBehaviour
 
     private void TryAttack()
     {
-        // Don't attack if inventory is open
-        if (inventoryManager != null && inventoryManager.IsInventoryOpen)
-        {
+        // Diyalog/hareket kilitliyse
+        if (playerMovement && playerMovement.IsPaused)
             return;
-        }
 
-        // Check cooldown FIRST, before triggering animation
-        if (Time.time - lastAttackTime < cooldown) return;
+        // Envanter açýksa
+        if (inventoryManager != null && inventoryManager.IsInventoryOpen)
+            return;
+
+        // Cooldown
+        if (Time.time - lastAttackTime < cooldown)
+            return;
 
         lastAttackTime = Time.time;
 
-        // Only trigger animation if attack is allowed
-        if (anim)
-            anim.SetTrigger("Attack");
-
-        // Start coroutine to apply damage after delay
+        if (anim) anim.SetTrigger("Attack");
         StartCoroutine(ApplyDamageAfterDelay());
     }
 
     private IEnumerator ApplyDamageAfterDelay()
     {
-        // Store attack parameters at the moment of attack
         Vector2 origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
-        Camera cameraUsed = cam ? cam : Camera.main;
         Vector2 aimDir = Vector2.right;
 
-        if (cameraUsed && Mouse.current != null)
+        if (cam && Mouse.current != null)
         {
-            Vector3 mouseWorld = cameraUsed.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+            Vector3 mouseWorld = cam.ScreenToWorldPoint(Mouse.current.position.ReadValue());
             mouseWorld.z = 0f;
             aimDir = ((Vector2)mouseWorld - origin).normalized;
             if (aimDir.sqrMagnitude < 0.0001f) aimDir = Vector2.right;
         }
 
-        // Wait for the damage delay
         yield return new WaitForSeconds(damageDelay);
 
-        // Now apply damage
-        // Update origin in case player moved during animation
         origin = attackOrigin ? (Vector2)attackOrigin.position : (Vector2)transform.position;
 
         Collider2D[] hits = Physics2D.OverlapCircleAll(origin, range, enemyMask);
-
-        foreach (var hit in hits)
+        for (int i = 0; i < hits.Length; i++)
         {
+            var hit = hits[i];
             if (!hit) continue;
 
             Vector2 toTarget = (Vector2)hit.bounds.center - origin;
             float angle = Vector2.Angle(aimDir, toTarget);
-
             if (angle > arc * 0.5f) continue;
 
-            EnemyHealth enemy = hit.GetComponentInParent<EnemyHealth>();
+            var enemy = hit.GetComponentInParent<EnemyHealth>();
             if (enemy != null)
-            {
                 enemy.TakeDamage(damage, origin);
-            }
         }
     }
 
