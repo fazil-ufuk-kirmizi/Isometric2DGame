@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 1323365525141711108}
   - component: {fileID: 8758644211508882517}
   m_Layer: 0
-  m_Name: DropItem
+  m_Name: WorldItem
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -50,6 +50,11 @@ MonoBehaviour:
   quantity: 1
   bobSpeed: 2
   bobHeight: 0.2
+  requireKeyPress: 1
+  pickupKey: 101
+  tooltipPrefab: {fileID: 5831906523416761476, guid: 8b0a44b70bc54d44684313ca28938251, type: 3}
+  tooltipOffset: {x: 0, y: 1, z: 0}
+  pickupText: Press E to pick up
 --- !u!212 &1323365525141711108
 SpriteRenderer:
   m_ObjectHideFlags: 0

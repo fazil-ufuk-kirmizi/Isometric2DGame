@@ -13,8 +13,9 @@ MonoBehaviour:
   m_Name: key
   m_EditorClassIdentifier: 
   itemName: Key
-  icon: {fileID: 21300000, guid: 719c2201c2f5f6c4aafffaeb5abdf5f9, type: 3}
-  description: sadfsafcdsfvcsd
+  icon: {fileID: 21300000, guid: 68fba0368e8dc8842ad10756647eee14, type: 3}
+  description: "A key that opens one door\u2026 but which one? Good luck figuring
+    that out"
   itemType: 3
   healAmount: 0
-  consumeOnUse: 1
+  consumeOnUse: 0

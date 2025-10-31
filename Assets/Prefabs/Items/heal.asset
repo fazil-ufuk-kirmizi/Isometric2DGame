@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 024dead3141191442acf05dbe0af86d7, type: 3}
   m_Name: heal
   m_EditorClassIdentifier: 
-  itemName: Heal
-  icon: {fileID: 21300000, guid: d659f7396cd57754eba78763cf986c51, type: 3}
-  description: lasdhasdfhsa
+  itemName: Health Potion
+  icon: {fileID: 21300000, guid: 0edcb30428af9c34b9114c75ee984bf2, type: 3}
+  description: A basic health potion. Restores a portion of your health when used.
+    Right-click to consume
   itemType: 1
   healAmount: 20
   consumeOnUse: 1

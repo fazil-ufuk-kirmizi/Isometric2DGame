@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(SpriteRenderer))]
 [RequireComponent(typeof(Collider2D))]
@@ -12,9 +13,20 @@ public class WorldItem : MonoBehaviour
     [SerializeField] private float bobSpeed = 2f;
     [SerializeField] private float bobHeight = 0.2f;
 
+    [Header("Pickup")]
+    [SerializeField] private bool requireKeyPress = true;  // If true, player must press E to pickup
+
+    [Header("Tooltip")]
+    [SerializeField] private GameObject tooltipPrefab;      // Assign the tooltip UI prefab
+    [SerializeField] private Vector3 tooltipOffset = new Vector3(0f, 1f, 0f); // Offset above item
+    [SerializeField] private string pickupText = "Press E to pick up"; // Text to display
+
     private SpriteRenderer spriteRenderer;
     private Vector3 startPosition;
     private float timeOffset;
+    private bool playerInRange = false;
+    private GameObject tooltipInstance;
+    private Transform playerTransform;
 
     private void Awake()
     {
@@ -31,6 +43,12 @@ public class WorldItem : MonoBehaviour
         {
             spriteRenderer.sprite = itemData.icon;
         }
+
+        // Create tooltip if prefab is assigned
+        if (tooltipPrefab && requireKeyPress)
+        {
+            CreateTooltip();
+        }
     }
 
     private void Update()
@@ -40,6 +58,32 @@ public class WorldItem : MonoBehaviour
         {
             float newY = startPosition.y + Mathf.Sin((Time.time + timeOffset) * bobSpeed) * bobHeight;
             transform.position = new Vector3(transform.position.x, newY, transform.position.z);
+        }
+
+        // Update tooltip position
+        if (tooltipInstance != null && tooltipInstance.activeSelf)
+        {
+            tooltipInstance.transform.position = transform.position + tooltipOffset;
+        }
+
+        // Check for pickup input when player is in range
+        if (playerInRange && requireKeyPress)
+        {
+            // Using New Input System
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
+            {
+                Pickup();
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up tooltip when item is destroyed
+        if (tooltipInstance != null)
+        {
+            Destroy(tooltipInstance);
         }
     }
 
@@ -54,11 +98,57 @@ public class WorldItem : MonoBehaviour
         }
     }
 
+    private void CreateTooltip()
+    {
+        if (!tooltipPrefab) return;
+
+        tooltipInstance = Instantiate(tooltipPrefab);
+        tooltipInstance.transform.SetParent(null); // World space tooltip
+        tooltipInstance.transform.position = transform.position + tooltipOffset;
+
+        // Set the tooltip text
+        var tooltipScript = tooltipInstance.GetComponent<ItemTooltip>();
+        if (tooltipScript)
+        {
+            tooltipScript.SetText(pickupText);
+        }
+
+        // Hide tooltip initially
+        tooltipInstance.SetActive(false);
+    }
+
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (other.CompareTag("Player"))
         {
-            Pickup();
+            playerInRange = true;
+            playerTransform = other.transform;
+
+            // Show tooltip if using key press pickup
+            if (requireKeyPress && tooltipInstance != null)
+            {
+                tooltipInstance.SetActive(true);
+            }
+            // Auto-pickup if not requiring key press
+            else if (!requireKeyPress)
+            {
+                Pickup();
+            }
+        }
+    }
+
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            playerInRange = false;
+            playerTransform = null;
+
+            // Hide tooltip
+            if (tooltipInstance != null)
+            {
+                tooltipInstance.SetActive(false);
+            }
         }
     }
 
