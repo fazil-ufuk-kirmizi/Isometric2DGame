@@ -29,17 +29,17 @@ public class EnemyHealth : MonoBehaviour
     [SerializeField] private float hitAnimationDuration = 0.3f;
 
     [Header("Stun")]
-    [SerializeField] private float stunDuration = 0.3f; // Time enemy is stunned AFTER hit reaction (knockback + animation)
+    [SerializeField] private float stunDuration = 0.3f;
 
     [Header("Item Drops")]
-    [SerializeField] private ItemDrop[] itemDrops; // Items to drop when enemy dies
-    [SerializeField] private GameObject worldItemPrefab; // Prefab with WorldItem component
-    [SerializeField] private float dropForce = 3f; // Force to pop items out
-    [SerializeField] private float dropRadius = 0.5f; // Spread radius for items
+    [SerializeField] private ItemDrop[] itemDrops;
+    [SerializeField] private GameObject worldItemPrefab;
+    [SerializeField] private float dropForce = 3f;
+    [SerializeField] private float dropRadius = 0.5f;
 
     [Header("Death")]
-    [SerializeField] private float deathDelayAfterHit = 0.3f; // Delay between hit animation and death animation
-    [SerializeField] private float deathAnimationDuration = 1f; // Duration of death animation
+    [SerializeField] private float deathDelayAfterHit = 0.3f;
+    [SerializeField] private float deathAnimationDuration = 1f;
     [SerializeField] private bool disableCollisionOnDeath = true;
 
     private Rigidbody2D rb;
@@ -47,7 +47,7 @@ public class EnemyHealth : MonoBehaviour
     private Animator anim;
     private Collider2D[] colliders;
     private float knockbackTimer;
-    private float hitReactionTimer; // Tracks the full hit reaction time (knockback + animation)
+    private float hitReactionTimer;
     private float stunTimer;
     private bool isPlayingHitAnimation;
     private bool isDead = false;
@@ -55,8 +55,8 @@ public class EnemyHealth : MonoBehaviour
     public int CurrentHP => currentHP;
     public int MaxHP => maxHP;
     public bool IsInKnockback => knockbackTimer > 0f;
-    public bool IsInHitReaction => hitReactionTimer > 0f; // True during knockback + hit animation
-    public bool IsStunned => stunTimer > 0f && hitReactionTimer <= 0f; // Only stunned AFTER hit reaction
+    public bool IsInHitReaction => hitReactionTimer > 0f;
+    public bool IsStunned => stunTimer > 0f && hitReactionTimer <= 0f;
     public bool IsPlayingHitAnimation => isPlayingHitAnimation;
     public bool IsDead => isDead;
 
@@ -75,27 +75,22 @@ public class EnemyHealth : MonoBehaviour
 
     private void FixedUpdate()
     {
-        // Don't update timers if dead and body is static
         if (isDead && rb && rb.bodyType == RigidbodyType2D.Static)
         {
             return;
         }
 
-        // Count down knockback timer
         if (knockbackTimer > 0f)
         {
             knockbackTimer -= Time.fixedDeltaTime;
         }
 
-        // Count down hit reaction timer (longest of knockback or animation)
         if (hitReactionTimer > 0f)
         {
             hitReactionTimer -= Time.fixedDeltaTime;
 
-            // When hit reaction ends, stop movement and start stun
             if (hitReactionTimer <= 0f && stunTimer > 0f)
             {
-                // Only set velocity if body is not static
                 if (rb && rb.bodyType != RigidbodyType2D.Static)
                 {
                     rb.linearVelocity = Vector2.zero;
@@ -103,7 +98,6 @@ public class EnemyHealth : MonoBehaviour
             }
         }
 
-        // Count down stun timer (only after hit reaction ends)
         if (stunTimer > 0f && hitReactionTimer <= 0f)
         {
             stunTimer -= Time.fixedDeltaTime;
@@ -119,14 +113,12 @@ public class EnemyHealth : MonoBehaviour
 
         SpawnDamagePopup(amount);
 
-        // Apply knockback and hit animation simultaneously
         ApplyKnockback(damageSourcePosition);
         PlayHitAnimation();
         StartHitReaction();
 
         if (currentHP == 0)
         {
-            // Start death sequence after hit animation plays
             StartCoroutine(DieAfterHit());
         }
     }
@@ -140,13 +132,11 @@ public class EnemyHealth : MonoBehaviour
 
         SpawnDamagePopup(amount);
 
-        // Play hit animation and start hit reaction
         PlayHitAnimation();
         StartHitReaction();
 
         if (currentHP == 0)
         {
-            // Start death sequence after hit animation plays
             StartCoroutine(DieAfterHit());
         }
     }
@@ -181,11 +171,8 @@ public class EnemyHealth : MonoBehaviour
 
     private void StartHitReaction()
     {
-        // Hit reaction lasts for the longer of knockback or animation
         float hitReactionDuration = Mathf.Max(knockbackDuration, hitAnimationDuration);
         hitReactionTimer = hitReactionDuration;
-
-        // Stun starts after hit reaction ends
         stunTimer = hitReactionDuration + stunDuration;
     }
 
@@ -218,16 +205,13 @@ public class EnemyHealth : MonoBehaviour
             return;
         }
 
-        // Spawn each item in the world
         foreach (var itemDrop in itemDrops)
         {
             if (itemDrop.item == null) continue;
 
-            // Random position around the enemy
             Vector2 randomOffset = Random.insideUnitCircle * dropRadius;
             Vector3 spawnPos = transform.position + new Vector3(randomOffset.x, randomOffset.y, 0f);
 
-            // Create the world item
             GameObject worldItemObj = Instantiate(worldItemPrefab, spawnPos, Quaternion.identity);
             WorldItem worldItem = worldItemObj.GetComponent<WorldItem>();
 
@@ -236,7 +220,6 @@ public class EnemyHealth : MonoBehaviour
                 worldItem.Initialize(itemDrop.item, itemDrop.quantity);
             }
 
-            // Add a small force to make it "pop out"
             Rigidbody2D itemRb = worldItemObj.GetComponent<Rigidbody2D>();
             if (itemRb)
             {
@@ -250,38 +233,33 @@ public class EnemyHealth : MonoBehaviour
 
     private IEnumerator DieAfterHit()
     {
-        // Mark as dead to prevent further damage
         isDead = true;
 
-        // Disable AI immediately so enemy stops moving/attacking
         if (enemyAI)
         {
             enemyAI.enabled = false;
         }
 
-        // Wait for hit animation to play
         yield return new WaitForSeconds(deathDelayAfterHit);
 
-        // Now proceed with death sequence
         Die();
     }
 
     private void Die()
     {
-        // Invoke death event
         OnDeath?.Invoke();
 
-        // Drop items into the world
+        // NOTIFY QUEST SYSTEM
+        NPCController.NotifyEnemyKilled();
+
         DropItems();
 
-        // Stop all movement and make static
         if (rb)
         {
             rb.linearVelocity = Vector2.zero;
-            rb.bodyType = RigidbodyType2D.Static; // Make it static so it doesn't fall or move
+            rb.bodyType = RigidbodyType2D.Static;
         }
 
-        // Disable collisions if specified
         if (disableCollisionOnDeath && colliders != null)
         {
             foreach (var col in colliders)
@@ -290,27 +268,22 @@ public class EnemyHealth : MonoBehaviour
             }
         }
 
-        // Clear all timers since enemy is dead
         knockbackTimer = 0f;
         hitReactionTimer = 0f;
         stunTimer = 0f;
 
-        // Play death animation and destroy after it finishes
         StartCoroutine(DeathSequence());
     }
 
     private IEnumerator DeathSequence()
     {
-        // Trigger death animation
         if (anim)
         {
             anim.SetTrigger("death");
         }
 
-        // Wait for animation to complete
         yield return new WaitForSeconds(deathAnimationDuration);
 
-        // Destroy the game object
         Destroy(gameObject);
     }
 }

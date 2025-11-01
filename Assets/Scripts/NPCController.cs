@@ -6,6 +6,21 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 
+[System.Serializable]
+public class Quest
+{
+    public string questName;
+    [TextArea] public string description;
+    public int requiredKills = 3;
+    public ItemDrop[] rewards;
+
+    [Header("Dialogue")]
+    [TextArea] public string offerDialogue = "I need your help! Kill 3 enemies!";
+    [TextArea] public string activeDialogue = "Have you dealt with those enemies yet?";
+    [TextArea] public string completeDialogue = "Excellent! Here's your reward!";
+    [TextArea] public string finishedDialogue = "Thanks again!";
+}
+
 public class NPCController : MonoBehaviour
 {
     private enum DialogueMode { None, Normal, Quest }
@@ -22,9 +37,25 @@ public class NPCController : MonoBehaviour
     [SerializeField] private bool randomizeDialogue = false;
     [SerializeField] private bool cycleThroughDialogue = true;
 
+    [Header("Quest System")]
+    [SerializeField] private Quest quest; // Assign in Inspector
+
+    private int currentKills = 0;
+    private bool questGiven = false;
+    private bool questCompleted = false;
+    private bool questRewarded = false;
+
+    [Header("Quest Tracker UI (Aynı Script İçinde)")]
+    [Tooltip("Görev paneli (ör. Canvas > QuestTrackerPanel)")]
+    [SerializeField] private GameObject questTrackerPanel;
+    [Tooltip("Görev başlığı (TMP_Text)")]
+    [SerializeField] private TextMeshProUGUI questTitleText;
+    [Tooltip("İlerleme/Completed metni (TMP_Text)")]
+    [SerializeField] private TextMeshProUGUI questProgressText;
+
     [Header("Interaction")]
     [SerializeField, Min(0f)] private float interactionRange = 2.84f;
-    [SerializeField] private InputActionReference interactAction; // assign in Inspector
+    [SerializeField] private InputActionReference interactAction;
     [SerializeField] private GameObject interactPrompt;
 
     [Header("Dialogue UI")]
@@ -34,8 +65,9 @@ public class NPCController : MonoBehaviour
     [SerializeField, Min(0f)] private float textSpeed = 0.05f;
 
     [Header("Choice UI")]
-    [SerializeField] private GameObject choicePanel; // panel with 3 buttons
+    [SerializeField] private GameObject choicePanel;
     [SerializeField] private Button questButton;
+    [SerializeField] private TextMeshProUGUI questButtonText; // Text component of quest button
     [SerializeField] private Button talkButton;
     [SerializeField] private Button leaveButton;
 
@@ -44,11 +76,10 @@ public class NPCController : MonoBehaviour
     [SerializeField] private SpriteRenderer spriteRenderer;
 
     [Header("Safety Windows")]
-    [SerializeField, Min(0f)] private float inputWarmupDuration = 0.25f; // ignore inputs just after enable
-    [SerializeField, Min(0f)] private float enterRangeCooldown = 0.15f;  // ignore inputs right after entering range
-    [SerializeField, Min(0f)] private float choiceBlockDuration = 0.2f;  // ignore clicks just after opening menu
+    [SerializeField, Min(0f)] private float inputWarmupDuration = 0.25f;
+    [SerializeField, Min(0f)] private float enterRangeCooldown = 0.15f;
+    [SerializeField, Min(0f)] private float choiceBlockDuration = 0.2f;
 
-    // Runtime state
     private GameObject player;
     private PlayerMovement playerMovement;
     private bool playerInRange;
@@ -58,12 +89,13 @@ public class NPCController : MonoBehaviour
     private Coroutine typingCoroutine;
     private bool inputGuard;
 
-    // Timers
-    private float canAcceptInputAt = 0f;  // global warmup + enter-range gate
-    private float choiceBlockUntil = -1f; // choice menu click gate
+    private float canAcceptInputAt = 0f;
+    private float choiceBlockUntil = -1f;
 
-    // Input
     private InputAction anyKeyAction;
+
+    // Statik: düşman öldürünce tüm görev verenlere haber
+    private static readonly List<NPCController> questGivers = new();
 
     private void Start()
     {
@@ -75,8 +107,27 @@ public class NPCController : MonoBehaviour
         if (choicePanel) choicePanel.SetActive(false);
         if (interactPrompt) interactPrompt.SetActive(false);
 
-        // Global warmup from start
+        // Quest Tracker UI varsayılan gizli
+        if (questTrackerPanel) questTrackerPanel.SetActive(false);
+        else TryAutoWireQuestTracker(); // Inspector boşsa otomatik bulmayı dene
+
+        // Auto-wire quest button text if not assigned
+        if (!questButtonText && questButton)
+        {
+            questButtonText = questButton.GetComponentInChildren<TextMeshProUGUI>();
+        }
+
         canAcceptInputAt = Time.unscaledTime + inputWarmupDuration;
+
+        if (quest != null && !questGivers.Contains(this))
+        {
+            questGivers.Add(this);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        questGivers.Remove(this);
     }
 
     private void OnEnable()
@@ -87,16 +138,11 @@ public class NPCController : MonoBehaviour
             interactAction.action.performed += OnInteractPressed;
             interactAction.action.Enable();
         }
-        else
-        {
-            Debug.LogError("Interact ActionReference is not assigned or action is null.");
-        }
 
         anyKeyAction = new InputAction("AnyKey", InputActionType.Button);
         anyKeyAction.AddBinding("<Keyboard>/anyKey");
         anyKeyAction.AddBinding("*/<Button>");
         anyKeyAction.started += OnAnyKeyPressed;
-        // Not enabled here; enabled when lines begin
 
         if (questButton) questButton.onClick.AddListener(OnQuestSelected);
         if (talkButton) talkButton.onClick.AddListener(OnTalkSelected);
@@ -143,7 +189,6 @@ public class NPCController : MonoBehaviour
             if (playerInRange)
             {
                 OnPlayerEnterRange();
-                // Gate inputs briefly after entering range
                 canAcceptInputAt = Mathf.Max(canAcceptInputAt, Time.unscaledTime + enterRangeCooldown);
             }
             else
@@ -155,31 +200,20 @@ public class NPCController : MonoBehaviour
         if (playerInRange && facePlayer && spriteRenderer && !isDialogueActive)
             FacePlayer();
 
-        // No WasPressedThisFrame fallback here (prevents accidental auto-open)
         if (inputGuard) inputGuard = false;
     }
 
     private bool CanProcessInteract()
     {
-        // Global warmup, enter-range cooldown, menu state
         if (Time.unscaledTime < canAcceptInputAt) return false;
         if (inChoiceMenu) return false;
         return true;
     }
 
-    // Open choice menu only (no dialogue panel yet)
     private void StartDialogue()
     {
-        if (dialogueLines == null || dialogueLines.Count == 0)
-        {
-            Debug.LogError("No dialogue lines to show.");
-            return;
-        }
-
-        if (playerMovement)
-        {
-            playerMovement.SetPaused(true);
-        }
+        // PlayerMovement.SetPaused mevcut değilse sorun çıkmasın diye null-check
+        if (playerMovement && HasSetPaused(playerMovement)) playerMovement.SetPaused(true);
 
         isDialogueActive = true;
         inChoiceMenu = true;
@@ -187,14 +221,14 @@ public class NPCController : MonoBehaviour
         if (playerMovement) playerMovement.enabled = false;
         if (interactPrompt) interactPrompt.SetActive(false);
 
-        // Only show choice panel, NOT dialogue panel
         if (dialoguePanel) dialoguePanel.SetActive(false);
         if (choicePanel) choicePanel.SetActive(true);
 
-        // Block same-frame submits
+        // Update quest button text based on current state
+        UpdateQuestButtonText();
+
         choiceBlockUntil = Time.unscaledTime + choiceBlockDuration;
 
-        // Any-key disabled while choosing
         if (anyKeyAction != null && anyKeyAction.enabled) anyKeyAction.Disable();
 
         EventSystem.current?.SetSelectedGameObject(null);
@@ -202,26 +236,103 @@ public class NPCController : MonoBehaviour
         StartCoroutine(ReleaseGuardNextFrame());
     }
 
-    private void BeginLines()
+    private void UpdateQuestButtonText()
+    {
+        if (!questButtonText || quest == null) return;
+
+        if (!questGiven)
+        {
+            questButtonText.text = "Accept Quest";
+        }
+        else if (questCompleted && !questRewarded)
+        {
+            questButtonText.text = "Turn In Quest";
+        }
+        else if (questRewarded)
+        {
+            questButtonText.text = "Quest";
+        }
+        else
+        {
+            questButtonText.text = "Quest Status";
+        }
+    }
+
+    private void BeginLines(string customDialogue = null)
     {
         inChoiceMenu = false;
         if (choicePanel) choicePanel.SetActive(false);
 
-        // NOW activate the dialogue panel for actual dialogue
         if (dialoguePanel) dialoguePanel.SetActive(true);
         if (nameText) nameText.text = npcName;
 
-        currentDialogueIndex = randomizeDialogue ? Random.Range(0, dialogueLines.Count) : 0;
-        ShowCurrentLine();
+        if (!string.IsNullOrEmpty(customDialogue))
+        {
+            if (typingCoroutine != null) StopCoroutine(typingCoroutine);
+            if (dialogueText)
+            {
+                dialogueText.text = string.Empty;
+                typingCoroutine = StartCoroutine(TypeText(customDialogue));
+            }
+        }
+        else
+        {
+            currentDialogueIndex = randomizeDialogue ? Random.Range(0, dialogueLines.Count) : 0;
+            ShowCurrentLine();
+        }
 
         if (anyKeyAction != null && !anyKeyAction.enabled) anyKeyAction.Enable();
-
     }
 
     private void OnQuestSelected()
     {
         if (ChoiceClicksBlocked()) return;
-        BeginLines();
+
+        if (quest == null)
+        {
+            BeginLines();
+            return;
+        }
+
+        if (!questGiven)
+        {
+            // Accept Quest - Show offer dialogue
+            questGiven = true;
+            currentKills = 0;
+            questCompleted = false;
+
+            UpdateQuestTrackerUI();
+
+            BeginLines(quest.offerDialogue);
+            Debug.Log($"Quest started: {quest.questName}");
+        }
+        else if (questCompleted && !questRewarded)
+        {
+            // Turn in Quest - Show completion dialogue and give rewards
+            GiveRewards();
+            questRewarded = true;
+
+            UpdateQuestTrackerUI(); // Show completed status
+
+            BeginLines(quest.completeDialogue);
+            StartCoroutine(HideTrackerAfterDelay(2f));
+        }
+        else if (questRewarded)
+        {
+            // Quest already finished
+            BeginLines(quest.finishedDialogue);
+        }
+        else
+        {
+            // Quest in progress
+            BeginLines(quest.activeDialogue);
+        }
+    }
+
+    private IEnumerator HideTrackerAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (questTrackerPanel) questTrackerPanel.SetActive(false);
     }
 
     private void OnTalkSelected()
@@ -255,10 +366,6 @@ public class NPCController : MonoBehaviour
             dialogueText.text = string.Empty;
             typingCoroutine = StartCoroutine(TypeText(line));
         }
-        else
-        {
-            Debug.LogError("Dialogue Text is not assigned.");
-        }
     }
 
     private IEnumerator TypeText(string text)
@@ -279,7 +386,8 @@ public class NPCController : MonoBehaviour
         {
             StopCoroutine(typingCoroutine);
             typingCoroutine = null;
-            dialogueText.text = dialogueLines[currentDialogueIndex];
+            if (dialogueText && currentDialogueIndex < dialogueLines.Count)
+                dialogueText.text = dialogueLines[currentDialogueIndex];
             return;
         }
 
@@ -296,7 +404,7 @@ public class NPCController : MonoBehaviour
         inChoiceMenu = false;
         currentDialogueIndex = 0;
 
-        if (playerMovement) playerMovement.SetPaused(false);
+        if (playerMovement && HasSetPaused(playerMovement)) playerMovement.SetPaused(false);
 
         if (typingCoroutine != null)
         {
@@ -314,7 +422,103 @@ public class NPCController : MonoBehaviour
         if (playerInRange && interactPrompt) interactPrompt.SetActive(true);
     }
 
-    // Input callbacks
+    // ===== QUEST TRACKER (aynı script) =====
+    private void UpdateQuestTrackerUI()
+    {
+        if (quest == null) return;
+
+        // Panel set
+        if (!questTrackerPanel) TryAutoWireQuestTracker();
+
+        if (questTrackerPanel) questTrackerPanel.SetActive(true);
+        if (questTitleText) questTitleText.text = quest.questName;
+
+        if (questProgressText)
+        {
+            if (questCompleted)
+            {
+                questProgressText.text = "COMPLETED! Return to quest giver.";
+                questProgressText.color = Color.green;
+            }
+            else
+            {
+                questProgressText.text = $"Kill {quest.requiredKills} Enemies\nProgress: {currentKills}/{quest.requiredKills}";
+                questProgressText.color = Color.white;
+            }
+        }
+    }
+
+    // Inspector boşsa isimle otomatik bağlama (opsiyonel)
+    private void TryAutoWireQuestTracker()
+    {
+        if (!questTrackerPanel)
+        {
+            var panelObj = GameObject.Find("QuestTrackerPanel");
+            if (panelObj) questTrackerPanel = panelObj;
+        }
+        if (!questTitleText && questTrackerPanel)
+        {
+            var t = questTrackerPanel.transform.Find("TitleText");
+            if (t) questTitleText = t.GetComponent<TextMeshProUGUI>();
+        }
+        if (!questProgressText && questTrackerPanel)
+        {
+            var t = questTrackerPanel.transform.Find("ProgressText");
+            if (t) questProgressText = t.GetComponent<TextMeshProUGUI>();
+        }
+    }
+
+    public static void NotifyEnemyKilled()
+    {
+        foreach (var npc in questGivers)
+        {
+            if (npc.questGiven && !npc.questCompleted)
+            {
+                npc.OnEnemyKilled();
+            }
+        }
+    }
+
+    private void OnEnemyKilled()
+    {
+        if (quest == null || !questGiven || questCompleted) return;
+
+        currentKills++;
+        if (currentKills >= quest.requiredKills)
+        {
+            questCompleted = true;
+            Debug.Log($"Quest completed: {quest.questName}");
+        }
+
+        UpdateQuestTrackerUI();
+    }
+
+    private void GiveRewards()
+    {
+        if (quest == null || quest.rewards == null) return;
+
+        var inventory = FindFirstObjectByType<InventoryManager>();
+        if (!inventory) return;
+
+        foreach (var reward in quest.rewards)
+        {
+            if (reward.item == null) continue;
+
+            Item newItem = new Item
+            {
+                itemName = reward.item.itemName,
+                icon = reward.item.icon,
+                quantity = reward.quantity,
+                description = reward.item.description,
+                itemData = reward.item
+            };
+
+            inventory.AddItem(newItem);
+            Debug.Log($"Reward: {reward.item.itemName} x{reward.quantity}");
+        }
+    }
+
+    // ===== INPUT/COLLATERAL =====
     private void OnInteractStarted(InputAction.CallbackContext ctx)
     {
         if (!playerInRange || isDialogueActive) return;
@@ -355,7 +559,6 @@ public class NPCController : MonoBehaviour
         inputGuard = false;
     }
 
-    // Range/UI helpers
     private void OnPlayerEnterRange()
     {
         if (!isDialogueActive && interactPrompt) interactPrompt.SetActive(true);
@@ -385,5 +588,11 @@ public class NPCController : MonoBehaviour
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, interactionRange);
+    }
+
+    // PlayerMovement.SetPaused var mı kontrolü (yoksa çağırmayalım)
+    private bool HasSetPaused(PlayerMovement pm)
+    {
+        return pm.GetType().GetMethod("SetPaused") != null;
     }
 }
